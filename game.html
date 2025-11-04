@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bulldog</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: 400px;
+            height: 600px;
+            border: 3px solid #FFD520;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(255, 213, 32, 0.3);
+        }
+
+        .game-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: linear-gradient(to bottom, #FF8C00 0%, #FF4500 50%, #800000 100%);
+        }
+
+        .score {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #FFD520;
+            font-size: 2em;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            z-index: 5;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(128, 0, 0, 0.9);
+            color: #FFD520;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            z-index: 10;
+            border: 2px solid #FFD520;
+        }
+
+        .game-over h2 {
+            margin-bottom: 20px;
+            font-size: 2em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .game-over p {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            color: #FFD520;
+        }
+
+        .restart-btn {
+            background: #FFD520;
+            color: #800000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .restart-btn:hover {
+            background: #FFE55C;
+            transform: scale(1.05);
+        }
+
+        .instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(128, 0, 0, 0.9);
+            color: #FFD520;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 5;
+            border: 2px solid #FFD520;
+        }
+
+        .instructions h3 {
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .instructions p {
+            margin-bottom: 10px;
+            color: #FFD520;
+        }
+
+        .start-btn {
+            background: #FFD520;
+            color: #800000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .start-btn:hover {
+            background: #FFE55C;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas class="game-canvas" id="gameCanvas" width="400" height="600"></canvas>
+        
+        <div class="score" id="score">0</div>
+        
+        <div class="instructions" id="instructions">
+            <h3>Flappy Bulldog</h3>
+            <p>Press SPACE or Click to jump!</p>
+            <p>Guide Testudo through campus!</p>
+            <button class="start-btn" onclick="startGame()">Start Game</button>
+        </div>
+        
+        <div class="game-over" id="gameOver">
+            <h2>Game Over!</h2>
+            <p>Score: <span id="finalScore">0</span></p>
+            <p>Best: <span id="bestScore">0</span></p>
+            <button class="restart-btn" onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const gameOverElement = document.getElementById('gameOver');
+        const instructionsElement = document.getElementById('instructions');
+        const finalScoreElement = document.getElementById('finalScore');
+        const bestScoreElement = document.getElementById('bestScore');
+
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let bestScore = localStorage.getItem('flappyBulldogBestScore') || 0;
+        bestScoreElement.textContent = bestScore;
+
+        // Bulldog object
+        const bulldog = {
+            x: 50,
+            y: canvas.height / 2,
+            width: 40,
+            height: 40,
+            velocity: 0,
+            gravity: 0.5,
+            jumpPower: -8
+        };
+
+        // Background elements
+        const skyline = {
+            buildings: Array.from({length: 5}, (_, i) => ({
+                x: i * 100,
+                width: 60,
+                height: Math.random() * 100 + 100
+            }))
+        };
+
+        // Pipes array
+        let pipes = [];
+        const pipeWidth = 60;
+        const pipeGap = 160;
+        const pipeSpeed = 2;
+
+        function drawBackground() {
+            // Draw sunset gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#FF8C00');
+            gradient.addColorStop(0.5, '#FF4500');
+            gradient.addColorStop(1, '#800000');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw buildings
+            ctx.fillStyle = '#000000';
+            skyline.buildings.forEach(building => {
+                ctx.fillRect(building.x, canvas.height - building.height, building.width, building.height);
+                
+                // Add windows
+                ctx.fillStyle = '#FFD520';
+                for(let y = canvas.height - building.height + 10; y < canvas.height - 20; y += 30) {
+                    for(let x = building.x + 10; x < building.x + building.width - 10; x += 20) {
+                        if(Math.random() > 0.3) { // Random windows lit
+                            ctx.fillRect(x, y, 10, 20);
+                        }
+                    }
+                }
+                ctx.fillStyle = '#000000';
+            });
+
+            // Move buildings
+            skyline.buildings.forEach(building => {
+                building.x -= 0.5;
+                if(building.x + building.width < 0) {
+                    building.x = canvas.width;
+                    building.height = Math.random() * 100 + 100;
+                }
+            });
+        }
+
+        function drawBulldog() {
+            // Body
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.ellipse(bulldog.x + bulldog.width/2, bulldog.y + bulldog.height/2, 
+                       bulldog.width/2, bulldog.height/2, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Face
+            ctx.fillStyle = '#D2691E';
+            ctx.beginPath();
+            ctx.ellipse(bulldog.x + bulldog.width*0.7, bulldog.y + bulldog.height/2, 
+                       bulldog.width/3, bulldog.height/3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Eyes
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(bulldog.x + bulldog.width*0.8, bulldog.y + bulldog.height*0.4, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Collar
+            ctx.fillStyle = '#FFD520';
+            ctx.fillRect(bulldog.x + bulldog.width*0.3, bulldog.y + bulldog.height*0.7, 
+                        bulldog.width*0.4, bulldog.height*0.15);
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background
+            drawBackground();
+
+            // Update bulldog
+            bulldog.velocity += bulldog.gravity;
+            bulldog.y += bulldog.velocity;
+
+            // Keep bulldog in bounds
+            if (bulldog.y < 0) {
+                bulldog.y = 0;
+                bulldog.velocity = 0;
+            }
+            if (bulldog.y + bulldog.height > canvas.height) {
+                gameOver();
+                return;
+            }
+
+            // Draw bulldog
+            drawBulldog();
+
+            // Update and draw pipes
+            updatePipes();
+            drawPipes();
+
+            // Check collisions
+            if (checkCollisions()) {
+                gameOver();
+                return;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updatePipes() {
+            // Move pipes
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].x -= pipeSpeed;
+
+                if (pipes[i].x + pipeWidth < 0) {
+                    pipes.splice(i, 1);
+                    score++;
+                    scoreElement.textContent = score;
+                }
+            }
+
+            // Add new pipes
+            if (pipes.length === 0 || pipes[pipes.length - 1].x < canvas.width - 200) {
+                const pipeHeight = Math.random() * (canvas.height - pipeGap - 100) + 50;
+                pipes.push({
+                    x: canvas.width,
+                    topHeight: pipeHeight,
+                    bottomY: pipeHeight + pipeGap
+                });
+            }
+        }
+
+        function drawPipes() {
+            ctx.fillStyle = '#800000';
+            pipes.forEach(pipe => {
+                // Top pipe
+                ctx.fillRect(pipe.x, 0, pipeWidth, pipe.topHeight);
+                // Bottom pipe
+                ctx.fillRect(pipe.x, pipe.bottomY, pipeWidth, canvas.height - pipe.bottomY);
+                
+                // Pipe caps
+                ctx.fillStyle = '#FFD520';
+                ctx.fillRect(pipe.x - 5, pipe.topHeight - 20, pipeWidth + 10, 20);
+                ctx.fillRect(pipe.x - 5, pipe.bottomY, pipeWidth + 10, 20);
+                ctx.fillStyle = '#800000';
+            });
+        }
+
+        function checkCollisions() {
+            for (let pipe of pipes) {
+                if (bulldog.x < pipe.x + pipeWidth &&
+                    bulldog.x + bulldog.width > pipe.x) {
+                    if (bulldog.y < pipe.topHeight ||
+                        bulldog.y + bulldog.height > pipe.bottomY) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function jump() {
+            if (gameRunning) {
+                bulldog.velocity = bulldog.jumpPower;
+            }
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            scoreElement.textContent = score;
+            instructionsElement.style.display = 'none';
+            gameOverElement.style.display = 'none';
+            
+            bulldog.y = canvas.height / 2;
+            bulldog.velocity = 0;
+            pipes = [];
+            
+            gameLoop();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            finalScoreElement.textContent = score;
+            
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('flappyBulldogBestScore', bestScore);
+                bestScoreElement.textContent = bestScore;
+            }
+            
+            gameOverElement.style.display = 'block';
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        // Event listeners
+        canvas.addEventListener('click', jump);
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        // Prevent space bar from scrolling
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>
+body>
+    <!-- Navigation Menu (same on all pages) -->
+    <nav>
+        <ul>
+            <li><a href="index.html">Home</a></li>
+            <li><a href="hobbies.html">Hobbies</a></li>
+            <li><a href="discover.html">Discover UMD</a></li>
+            <li><a href="resume.html">Resume</a></li>
+            <li><a href="career.html">Career</a></li>
+            <li><a href="game.html">Game</a></li>
+        </ul>
+    </nav>
+
+    <!-- Your page content goes here -->
+    <main>
+        <!-- Page-specific content -->
+    </main>
+
+    <!-- Footer (same on all pages) -->
+    <footer>
+        <p>&copy; 2025 Your Name. All rights reserved.</p>
+    </footer>
+    <main>
+   
